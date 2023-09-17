@@ -16,6 +16,13 @@ stockmodel = get_stockmodel('data/model/stock-pattern-v1.onnx')
 print("stockmodel", stockmodel)
 
 
+@app.route("/")
+def index():
+    return jsonify({
+        'message': 'welcome to stockmaster-be-ml'
+    }), 200
+
+
 @app.route("/stock-pattern", methods=['POST'])
 def predict_stock_pattern():
     if 'image' not in request.files:
