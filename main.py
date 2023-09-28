@@ -75,7 +75,7 @@ def predict_stock_pattern():
                   'bearish-pennant',
                   'bullish-rectangle',
                   'falling-wedge',
-                  'invers-head-and-shoulder',
+                  'inverse-head-and-shoulders',
                   'bullish-pennant',
                   'inverse-cup-and-handle',
                   'double-bottom',
@@ -83,10 +83,8 @@ def predict_stock_pattern():
                   'bearish-rectangle',
                   'cup-and-handle',
                   'rising-wedge',
-                  'head-and-shoulder',
+                  'head-and-shoulders',
                   'bearish-flag']
-
-    print(output)
 
     output_index = np.argmax(output)
     output_classname = classnames[output_index]
