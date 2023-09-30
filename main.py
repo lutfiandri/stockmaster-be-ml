@@ -6,8 +6,14 @@ from PIL import Image
 import numpy as np
 import json
 import base64
-from io import BytesIO
+from io import BytesIO, StringIO
 import time
+import requests
+import pandas as pd
+
+from statsmodels.tsa.seasonal import seasonal_decompose
+from statsmodels.tsa.statespace.sarimax import SARIMAX
+
 
 from util.stockmodel import get_stockmodel
 from util.np_encoder import NpEncoder
@@ -94,6 +100,73 @@ def predict_stock_pattern():
         'className': output_classname,
         'inferenceTimeSeconds': inference_duration
     }, cls=NpEncoder)))
+    response.status_code = 200
+    return response
+
+
+@app.route("/stock-updates", methods=["POST"])
+def get_stock_updates():
+    body = request.json
+    if 'symbol' not in body:
+        response = jsonify(json.loads(json.dumps(
+            {'message': 'No symbol'}, cls=NpEncoder)))
+        response.status_code = 400
+        response.headers['Content-Type'] = 'application/json'
+        return response
+
+    symbol = body['symbol']
+    print('symbol', symbol)
+
+    # get public api
+    url = f'https://www.alphavantage.co/query?function=TIME_SERIES_WEEKLY&symbol={symbol}&apikey=6PMW4SIUWX5TSDHX&datatype=csv'
+    r = requests.get(url)
+    csv_data = r.text
+
+    df = pd.read_csv(StringIO(csv_data))
+    df = df.sort_values(by='timestamp').reset_index(drop=True)
+
+    df = df[-52*4:]
+    df['timestamp'] = pd.to_datetime(df['timestamp'])
+
+    # seasonal decompose
+    sd_result = seasonal_decompose(
+        x=df['close'], model='additive', period=52)
+
+    # df['observed'] = sd_result.observed
+    df['trend'] = sd_result.trend
+    df['seasonal'] = sd_result.seasonal
+    df['residual'] = sd_result.resid
+
+    # sarimax
+    sarimax_model = SARIMAX(endog=df['close'].to_numpy(), order=(
+        1, 0, 0), seasonal_order=(2, 1, 0, 52))
+    sarimax_result = sarimax_model.fit()
+
+    forecast = sarimax_result.forecast(steps=52)
+
+    next_dates = pd.date_range(
+        start=df['timestamp'].iloc[-1] + pd.Timedelta(days=7), periods=52, freq='7D')
+    forecast_df = pd.DataFrame({
+        'timestamp': next_dates,
+        'forecast': forecast
+    })
+
+    df['timestamp'] = df['timestamp'].dt.strftime(
+        '%Y-%m-%dT%H:%M:%S.%fZ')
+    forecast_df['timestamp'] = forecast_df['timestamp'].dt.strftime(
+        '%Y-%m-%dT%H:%M:%S.%fZ')
+
+    df = df.drop(columns=['open', 'high', 'low'])
+    df_json = df.to_json(orient='records')
+
+    forecast_df_json = forecast_df.to_json(orient='records')
+
+    update_result = {
+        'real': json.loads(df_json),
+        'forecast': json.loads(forecast_df_json)
+    }
+
+    response = jsonify(json.loads(json.dumps(update_result, cls=NpEncoder)))
     response.status_code = 200
     return response
 
